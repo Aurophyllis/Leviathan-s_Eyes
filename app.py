@@ -57,12 +57,13 @@ def uniform(frames, start, end, count):
     return chosen
 
 
-def extract(video, output, start, end, count):
+def extract(video, output, start, end, count, *, frames=None):
     if output.exists():
         raise ValueError(f"Output directory already exists: {output}")
     if not video.is_file():
         raise ValueError(f"Video file does not exist: {video}")
-    frames = frame_times(video)
+    if frames is None:
+        frames = frame_times(video)
     end = end if end is not None else frames[-1][0] + 1
     if end <= start:
         raise ValueError("End must be greater than start")

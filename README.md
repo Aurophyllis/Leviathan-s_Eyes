@@ -122,3 +122,21 @@ python scripts/compare_methods.py 'C:/path/to/FOCUS-source.zip' runs/fixtures ru
 五组使用相同视频、题目、输入帧数和拼图设置。AKS 全量组对每帧打分，AKS 匹配组用均匀候选将打分次数限制为该题 FOCUS 的实测值。短预算将 AKS 深度上限设为 2 或 3，保留每个末级片段至少一帧。均匀与嵌套选帧无需调用题目相关性评分器，后者仍有画面变化扫描成本。
 
 仓库保留复跑工具。实验目录生成逐题证据覆盖、粗细阶段打分记录、视觉模型回答和 PNG。相关性评分次数单独计数，预解码缩略图及画面变化扫描不计入该指标。这套合成实验未使用 BLIP 或真实视频问答基准。
+
+## 第七步 · Video-MME 真实视频小样本
+
+输入采用 [Video-MME](https://huggingface.co/datasets/lmms-eval/Video-MME) 原视频与题目，并按题目 ID 关联 [KFS-Bench](https://github.com/NEC-VID/KFS-Bench) 的 Video-MME 场景标注。下载脚本按 ZIP 字节范围取得指定视频，输出可核对的视频哈希。外部视频、标注和模型权重保存在本地实验输入目录。
+
+安装试验依赖，并下载 [Xenova CLIP ONNX 固定版本](https://huggingface.co/Xenova/clip-vit-base-patch32/tree/6b7c523703ae26e39be4b03774966f8571c7f523) 的 `onnx/model_quantized.onnx`、`tokenizer.json` 和 `preprocessor_config.json` 放到同一目录。权重 SHA-256 应为 `0898a3facfdb27f0a041e57649b4989cfd094e4a0040d6ae75ed69917dfc7328`。Windows 运行时也需要 FOCUS 作者实现的 SciPy 和 Decord 依赖。
+
+```powershell
+python -m pip install numpy scipy decord pyarrow onnxruntime tokenizers
+python scripts/fetch_videomme_subset.py path/to/questions.parquet path/to/KFS-Bench-source.zip runs/videomme-short --chunks 20 --videos 3 --max-mib 48 --groups short
+python scripts/fetch_videomme_subset.py path/to/questions.parquet path/to/KFS-Bench-source.zip runs/videomme-medium --chunks 12 --videos 1 --max-mib 100 --groups medium
+python scripts/fetch_videomme_subset.py path/to/questions.parquet path/to/KFS-Bench-source.zip runs/videomme-long --chunks 9 --videos 1 --max-mib 60 --groups long
+python scripts/evaluate_real_video.py path/to/clip path/to/FOCUS-source.zip runs/real-pilot runs/videomme-short/manifest.json runs/videomme-medium/manifest.json runs/videomme-long/manifest.json --candidate-cap 64 --k 4 --ollama-model qwen35:latest
+```
+
+Video-MME 题目文件来自 [固定版本 parquet](https://huggingface.co/datasets/lmms-eval/Video-MME/resolve/ead1408f75b618502df9a1d8e0950166bf0a2a0b/videomme/test-00000-of-00001.parquet)。每个原视频在统一候选时间轴上评测，CLIP 使用题干与帧的余弦相似度。FOCUS 按需请求相关性分数，按候选序号分臂。AKS 使用与本题 FOCUS 相同的打分预算。嵌套覆盖和均匀采样共用候选池。所有方法使用相同的四格拼图排版进行纯视觉问答。
+
+输出记录场景命中、候选池覆盖上限、相关性评分次数和分段耗时。结果以小样本试验为单位，真实评测时长、题目分布和候选池密度均应随结果报告。

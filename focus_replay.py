@@ -43,14 +43,17 @@ class VideoTimeline:
         return self.fps
 
 
-def replay(selector_class, frame_count, fps, query, score, k, seed):
+def replay(selector_class, frame_count, fps, query, score, k, seed, *, batch_score=None):
     import numpy as np
 
     batches = []
 
     def score_batch(video, question, indices):
         positions = [int(index) for index in indices]
-        values = [float(score(index, question)) for index in positions]
+        values = (batch_score(positions, question) if batch_score is not None
+                  else [float(score(index, question)) for index in positions])
+        if len(values) != len(positions):
+            raise ValueError("Scorer returned an unexpected number of frame scores")
         batches.append(dict(zip(positions, values)))
         return values
 

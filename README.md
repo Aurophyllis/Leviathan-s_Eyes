@@ -107,3 +107,18 @@ python scripts/reproduce_aks.py 'C:/path/to/AKS-source.zip' runs/aks-blip
 ```
 
 使用作者缓存的 LongVideoBench BLIP 分数和帧序号，按 32、64 两个预算逐题对比完整选帧列表。脚本保存本地实现的输出、作者脚本复跑结果、输入哈希，以及与仓库随附帧列表分别比较的结果。此步骤验证给定分数后的选帧逻辑。视频解码、BLIP 推理与下游问答准确率需要独立验证。
+
+## 第六步 · FOCUS 同题对照
+
+从[资源索引](docs/phase-1/README.md)取得固定版本的 FOCUS 源码 ZIP。离线脚本校验 `focus.py` 的哈希后调用作者的粗筛、细筛和最终分配，并独立重算每个片段的粗筛置信分。该实验使用固定随机种子和合成题目对应的白色形状模板评分器。时间标注仅用于评估。
+
+```powershell
+python -m pip install numpy scipy decord
+python scripts/evaluate_sampling.py runs/fixtures
+python scripts/compare_methods.py 'C:/path/to/FOCUS-source.zip' runs/fixtures runs/paired-4 --k 4 --ollama-model qwen35:latest
+python scripts/compare_methods.py 'C:/path/to/FOCUS-source.zip' runs/fixtures runs/paired-8 --k 8
+```
+
+五组使用相同视频、题目、输入帧数和拼图设置。AKS 全量组对每帧打分，AKS 匹配组用均匀候选将打分次数限制为该题 FOCUS 的实测值。短预算将 AKS 深度上限设为 2 或 3，保留每个末级片段至少一帧。均匀与嵌套选帧无需调用题目相关性评分器，后者仍有画面变化扫描成本。
+
+仓库保留复跑工具。实验目录生成逐题证据覆盖、粗细阶段打分记录、视觉模型回答和 PNG。相关性评分次数单独计数，预解码缩略图及画面变化扫描不计入该指标。这套合成实验未使用 BLIP 或真实视频问答基准。

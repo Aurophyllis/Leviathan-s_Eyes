@@ -59,6 +59,16 @@ def uniform(frames, start, end, count):
     return chosen
 
 
+def write_selected_frames(video, folder, indices):
+    if not indices:
+        return
+    expression = "+".join(f"eq(n,{index})" for index in indices)
+    run("ffmpeg", "-nostdin", "-v", "error", "-i", str(video), "-map", "0:V:0",
+        "-vf", f"select='{expression}'", "-frames:v", str(len(indices)),
+        "-fps_mode", "passthrough", "-start_number", "1", "frame-%03d.png",
+        cwd=folder)
+
+
 def extract(video, output, start, end, count, *, frames=None, method="uniform"):
     if output.exists():
         raise ValueError(f"Output directory already exists: {output}")
@@ -86,12 +96,7 @@ def extract(video, output, start, end, count, *, frames=None, method="uniform"):
     with tempfile.TemporaryDirectory(dir=output.parent) as folder:
         stage = Path(folder) / "result"
         stage.mkdir()
-        if selected:
-            expression = "+".join(f"eq(n,{index})" for _, index, _ in selected)
-            run("ffmpeg", "-nostdin", "-v", "error", "-i", str(video), "-map", "0:V:0",
-                "-vf", f"select='{expression}'", "-frames:v", str(len(selected)),
-                "-fps_mode", "passthrough", "-start_number", "1", "frame-%03d.png",
-                cwd=stage)
+        write_selected_frames(video, stage, [index for _, index, _ in selected])
         records = []
         for number, (time, _, reason) in enumerate(selected, 1):
             name = f"frame-{number:03d}.png"

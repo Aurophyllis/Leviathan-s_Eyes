@@ -31,10 +31,10 @@ class VideoClient:
     def current(self):
         return self._request("/v1/videos/current")
 
-    def observe(self, video_id, start_ms, end_ms, k):
+    def observe(self, video_id, start_ms, end_ms, k, method="uniform"):
         if not re.fullmatch(r"[0-9a-f]{32}", video_id):
             raise ValueError("Invalid video ID")
-        body = {"start_ms": start_ms, "k": k, "method": "uniform"}
+        body = {"start_ms": start_ms, "k": k, "method": method}
         if end_ms is not None:
             body["end_ms"] = end_ms
         return self._request(f"/v1/videos/{video_id}/observations", body)

@@ -1,4 +1,4 @@
-"""Extract a uniform set of timestamped frames from a local video."""
+"""Extract a fixed budget of timestamped frames from a local video."""
 
 import argparse
 from bisect import bisect_left
@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 import subprocess
 import tempfile
+
+from sampling import METHODS, TRACE_CONFIG, classify, pick_changes, scan_changes
 
 
 def run(*args, cwd=None):
@@ -57,7 +59,7 @@ def uniform(frames, start, end, count):
     return chosen
 
 
-def extract(video, output, start, end, count, *, frames=None):
+def extract(video, output, start, end, count, *, frames=None, method="uniform"):
     if output.exists():
         raise ValueError(f"Output directory already exists: {output}")
     if not video.is_file():
@@ -67,28 +69,40 @@ def extract(video, output, start, end, count, *, frames=None):
     end = end if end is not None else frames[-1][0] + 1
     if end <= start:
         raise ValueError("End must be greater than start")
-    selected = uniform(frames, start, end, count)
+    if method not in METHODS:
+        raise ValueError("Unsupported sampling method")
+    if method == "uniform":
+        selected = [(time, index, "uniform") for time, index in uniform(frames, start, end, count)]
+    else:
+        available = [(time, index) for time, index in frames if start <= time < end]
+        change_rows = classify(available, scan_changes(video, available)) if available else []
+        anchor_count = max(1, count // 4) if method == "change_guarded" else 0
+        anchors = uniform(available, start, end, anchor_count) if anchor_count else []
+        selected = pick_changes(change_rows, count, anchors)
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=output.parent) as folder:
         stage = Path(folder) / "result"
         stage.mkdir()
         if selected:
-            expression = "+".join(f"eq(n,{index})" for _, index in selected)
+            expression = "+".join(f"eq(n,{index})" for _, index, _ in selected)
             run("ffmpeg", "-nostdin", "-v", "error", "-i", str(video), "-map", "0:V:0",
                 "-vf", f"select='{expression}'", "-frames:v", str(len(selected)),
                 "-fps_mode", "passthrough", "-start_number", "1", "frame-%03d.png",
                 cwd=stage)
         records = []
-        for number, (time, _) in enumerate(selected, 1):
+        for number, (time, _, reason) in enumerate(selected, 1):
             name = f"frame-{number:03d}.png"
             if not (stage / name).is_file():
                 raise ValueError(f"Expected FFmpeg output is missing: {name}")
-            records.append({"frame_id": number, "t_ms": time, "reason": "uniform", "image": name})
+            records.append({"frame_id": number, "t_ms": time, "reason": reason, "image": name})
         manifest = {
-            "method": "uniform", "start_ms": start, "end_ms": end, "k": count,
+            "method": method, "start_ms": start, "end_ms": end, "k": count,
             "shortfall": count - len(records), "frames": records,
         }
         (stage / "observation.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        if method != "uniform":
+            trace = {"config": TRACE_CONFIG, "candidates": change_rows}
+            (stage / "sampling_trace.json").write_text(json.dumps(trace, indent=2) + "\n", encoding="utf-8")
         stage.rename(output)
 
 
@@ -99,11 +113,13 @@ def main():
     parser.add_argument("--start-ms", type=int, default=0)
     parser.add_argument("--end-ms", type=int)
     parser.add_argument("--k", type=int, default=4)
+    parser.add_argument("--method", choices=METHODS, default="uniform")
     args = parser.parse_args()
     if args.start_ms < 0 or not 1 <= args.k <= 128:
         parser.error("Use a nonnegative start and a frame count between 1 and 128")
     try:
-        extract(args.video.resolve(), args.output.absolute(), args.start_ms, args.end_ms, args.k)
+        extract(args.video.resolve(), args.output.absolute(), args.start_ms, args.end_ms, args.k,
+                method=args.method)
     except (OSError, ValueError) as error:
         parser.exit(1, f"Error: {error}\n")
 

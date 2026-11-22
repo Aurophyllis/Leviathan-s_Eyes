@@ -20,6 +20,7 @@ from PIL import Image, ImageDraw, ImageGrab
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 from desktop import Desktop
+from sampling import METHODS
 
 
 def save(path, data):
@@ -71,7 +72,7 @@ def ollama(model, prompt, picture):
         return json.load(response)
 
 
-async def verify_connector(port, output, model):
+async def verify_connector(port, output, model, method):
     params = StdioServerParameters(command=sys.executable,
                                    args=[str(REPO / "mcp_connector.py"), "--port", str(port)],
                                    env=dict(os.environ))
@@ -84,12 +85,16 @@ async def verify_connector(port, output, model):
                 if current.isError:
                     raise RuntimeError(str(current.content))
                 video = current.structuredContent or json.loads(current.content[0].text)
-                result = await session.call_tool("observe_video", {"video_id": video["video_id"], "k": 4})
+                result = await session.call_tool("observe_video", {
+                    "video_id": video["video_id"], "k": 4, "method": method,
+                })
                 if result.isError:
                     raise RuntimeError(str(result.content))
                 observation = json.loads(next(item.text for item in result.content if item.type == "text"))
                 sheet = next(item for item in result.content if item.type == "image")
-                if sheet.mimeType != "image/png" or [f["t_ms"] for f in observation["frames"]] != [0, 1000, 2000, 3000]:
+                times = [f["t_ms"] for f in observation["frames"]]
+                if (sheet.mimeType != "image/png" or times != [0, 1000, 2000, 3000]
+                        or observation["method"] != method):
                     raise RuntimeError(f"Unexpected MCP observation: {observation}")
                 sheet_bytes = base64.b64decode(sheet.data)
                 (output / "mcp-sheet.png").write_bytes(sheet_bytes)
@@ -113,7 +118,7 @@ async def verify_connector(port, output, model):
                 if frame.mimeType != "image/png" or not png.startswith(b"\x89PNG\r\n\x1a\n"):
                     raise RuntimeError("MCP get_frame did not return PNG image bytes")
                 (output / "mcp-frame.png").write_bytes(png)
-                summary = {"tools": [tool.name for tool in tools.tools], "selected_frame": selected,
+                summary = {"tools": [tool.name for tool in tools.tools], "selected_frame": selected, "method": method,
                            "timestamp_ms": observation["frames"][selected - 1]["t_ms"],
                            "sheet_sha256": hashlib.sha256(sheet_bytes).hexdigest(),
                            "frame_sha256": hashlib.sha256(png).hexdigest()}
@@ -131,6 +136,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path)
     parser.add_argument("--ollama-model", help="Use an installed vision model via local Ollama")
+    parser.add_argument("--method", choices=METHODS, default="uniform")
     args = parser.parse_args()
     output = args.output.resolve()
     output.mkdir(parents=True)
@@ -142,9 +148,10 @@ def main():
         root.lift()
         desktop.load_video(video)
         until(root, lambda: desktop.server.session is not None)
+        desktop.method.set(next(label for label, key in desktop.method_labels.items() if key == args.method))
         desktop.observe_button.invoke()
         until(root, lambda: desktop.observation is not None)
-        if desktop.frames.size() != 4 or desktop.image is None:
+        if desktop.frames.size() != 4 or desktop.image is None or desktop.observation["method"] != args.method:
             raise RuntimeError("Desktop did not show the four frames")
         screenshot(root, output / "desktop-sheet.png")
         desktop.frames.selection_set(2)
@@ -153,7 +160,7 @@ def main():
         screenshot(root, output / "desktop-frame.png")
         if (output / "desktop-sheet.png").read_bytes() == (output / "desktop-frame.png").read_bytes():
             raise RuntimeError("Desktop screenshot did not change after selecting a frame")
-        asyncio.run(verify_connector(desktop.server.server_port, output, args.ollama_model))
+        asyncio.run(verify_connector(desktop.server.server_port, output, args.ollama_model, args.method))
     finally:
         desktop.close()
     print(f"Desktop and MCP verified. Evidence: {output}")

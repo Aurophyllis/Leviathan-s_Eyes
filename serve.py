@@ -11,6 +11,7 @@ from uuid import uuid4
 from PIL import Image, ImageDraw, ImageFont
 
 from app import extract, frame_times, run
+from sampling import METHODS
 
 
 def make_sheet(folder, frames):
@@ -57,11 +58,12 @@ class VideoSession:
             raise ValueError("start_ms, end_ms and k must be integers")
         if not 0 <= start < end <= self.info["duration_ms"] or not 1 <= count <= 128:
             raise ValueError("Interval must be within the video and k must be between 1 and 128")
-        if body.get("method", "uniform") != "uniform":
-            raise ValueError("Only uniform sampling is currently available")
+        method = body.get("method", "uniform")
+        if method not in METHODS:
+            raise ValueError(f"Method must be one of: {', '.join(METHODS)}")
         observation = uuid4().hex
         folder = self.output / observation
-        extract(self.video, folder, start, end, count, frames=self.frames)
+        extract(self.video, folder, start, end, count, frames=self.frames, method=method)
         data = json.loads((folder / "observation.json").read_text(encoding="utf-8"))
         frames = data["frames"]
         base = f"/v1/observations/{observation}"

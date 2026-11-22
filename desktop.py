@@ -12,6 +12,7 @@ from tkinter import filedialog, ttk
 from PIL import Image, ImageTk
 
 from serve import ObservationHandler, VideoSession
+from sampling import METHODS
 from video_client import VideoClient
 
 
@@ -54,6 +55,10 @@ class Desktop:
         self.start = self.field(toolbar, "起点 ms", "0")
         self.end = self.field(toolbar, "终点 ms", "")
         self.count = self.field(toolbar, "帧数", "4")
+        self.method_labels = dict(zip(("均匀", "画面变化", "变化与覆盖"), METHODS))
+        self.method = tk.StringVar(value="均匀")
+        ttk.Combobox(toolbar, textvariable=self.method, values=list(self.method_labels),
+                     state="readonly", width=10).pack(side="left", padx=(0, 8))
         self.observe_button = ttk.Button(toolbar, text="生成拼图", command=self.observe, state="disabled")
         self.observe_button.pack(side="left", padx=(2, 8))
         self.sheet_button = ttk.Button(toolbar, text="返回拼图", command=self.show_sheet, state="disabled")
@@ -138,10 +143,11 @@ class Desktop:
             self.status.set("起点、终点和帧数须为整数")
             return
         video_id = self.server.session.info["video_id"]
+        method = self.method_labels[self.method.get()]
         self.status.set("正在生成拼图…")
 
         def work():
-            result = self.client.observe(video_id, start, end, count)
+            result = self.client.observe(video_id, start, end, count, method)
             path = result["sheet_url"]
             return result, self.client.image(path) if path else None
 

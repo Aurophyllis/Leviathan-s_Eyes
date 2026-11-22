@@ -31,7 +31,7 @@ python serve.py sample.mp4 --output runs/server --port 8765
 | 请求 | 返回 |
 |---|---|
 | `GET /v1/videos/current` | 视频 ID、宽高和时长。 |
-| `POST /v1/videos/{video_id}/observations` | 传入 JSON 的起止毫秒、`k` 和 `method: "uniform"`，返回按时间排序的帧、单帧 URL 和拼图 URL。 |
+| `POST /v1/videos/{video_id}/observations` | 传入 JSON 的起止毫秒、`k` 和 `method`，返回按时间排序的帧、单帧 URL 和拼图 URL。 |
 | `GET` 返回的图片 URL | PNG 图像字节。拼图格号与单帧记录的 `frame_id` 一致。 |
 
 空区间指合法时间段内没有候选帧，此时返回空帧列表、缺额和空的拼图 URL。进程重启后使用新的会话 ID，已产生的 PNG 与 JSON 保留在输出目录。
@@ -76,3 +76,21 @@ Agent 先调用 `current_video`，再用 `observe_video` 获取带编号的拼�
 python scripts/verify_desktop.py runs/desktop-check
 python scripts/verify_desktop.py runs/desktop-vision-check --ollama-model qwen35:latest
 ```
+
+## 第四步 · 画面变化驱动选帧
+
+桌面界面可切换「均匀」「画面变化」「变化与覆盖」。CLI、HTTP 和 MCP 统一接受 `uniform`、`change_only`、`change_guarded`，默认均匀采样。
+
+- `uniform` 按等间隔时间点选取附近帧。
+- `change_only` 在 64×36 缩略帧上计算 HSV 变化分，依次优先硬切、累积运动和静止兜底，同类触发按分数降序。首遍避免相邻帧过近，次遍补足预算。
+- `change_guarded` 先预留约四分之一预算作为均匀时间锚点，再使用同一变化优先级补齐。首版的锚点会随预算重算，较大预算下的选帧集合可能变化。
+
+变化驱动的观察目录额外保存 `sampling_trace.json`，含分数、触发原因及阈值。三种方法都使用同一原始帧时间轴。变化方法目前会扫描指定区间的缩略帧并单独解码入选原帧，长视频扫描开销需要另行实测。
+
+```powershell
+python app.py sample.mp4 --k 4 --method change_guarded --output runs/guarded
+python scripts/evaluate_sampling.py runs/fixed-budget-evaluation
+python scripts/verify_desktop.py runs/guarded-desktop-check --method change_guarded
+```
+
+合成评测固定四个样片，在相同区间和帧数下比较证据命中。时间戳落入人工定义的证据区间即记一次命中。同一场景的重复帧不额外加分。

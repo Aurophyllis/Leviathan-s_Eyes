@@ -41,3 +41,38 @@ python serve.py sample.mp4 --output runs/server --port 8765
 ```powershell
 python scripts/verify_http.py "runs/http-check"
 ```
+
+## 第三步 · Windows 窗口与 MCP 连接器
+
+使用带 Tcl/Tk 的 Python 3.11 或更新版本。可以运行 `python -m tkinter` 检查 Tk 窗口是否可用。
+
+```powershell
+python -m pip install -r requirements.txt -r requirements-mcp.txt
+python desktop.py --output runs/desktop --port 8765
+```
+
+在窗口内打开视频，填入起止毫秒和帧数，点击「生成拼图」。选中右侧列表中的任一帧，可预览对应原始 PNG。「返回拼图」恢复总览。
+
+在支持 MCP stdio 且能向视觉模型传递图片工具结果的宿主中添加连接器。将命令和脚本路径填写为本机绝对路径。桌面程序与连接器使用同一端口。
+
+```json
+{
+  "mcpServers": {
+    "leviathan-eyes": {
+      "command": "C:/path/to/python.exe",
+      "args": ["D:/path/to/Leviathan's_Eyes/mcp_connector.py", "--port", "8765"]
+    }
+  }
+}
+```
+
+Agent 先调用 `current_video`，再用 `observe_video` 获取带编号的拼图和时间戳。根据返回的观察 ID 与格号调用 `get_frame`，取得原始 PNG。软件在本机记录实际的拼图和观察 JSON。关闭窗口会停止本机服务。
+
+### 验收复跑
+
+脚本会打开并关闭窗口，保存窗口截图、MCP 返回的 PNG、工具调用结果与测试样片。若本机 Ollama 有支持视觉的模型，可追加模型选项，记录它从拼图选择格号、再查看原始帧后给出的实际答案。
+
+```powershell
+python scripts/verify_desktop.py runs/desktop-check
+python scripts/verify_desktop.py runs/desktop-vision-check --ollama-model qwen35:latest
+```

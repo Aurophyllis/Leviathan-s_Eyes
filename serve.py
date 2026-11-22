@@ -90,11 +90,11 @@ class ObservationHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         session = self.server.session
-        if self.path == "/v1/videos/current":
+        if session is not None and self.path == "/v1/videos/current":
             self.reply(200, session.info)
             return
         match = re.fullmatch(r"/v1/observations/([0-9a-f]{32})/(sheet\.png|frame-[0-9]{3}\.png)", self.path)
-        if match:
+        if session is not None and match:
             observation, name = match.groups()
             if name in session.observations.get(observation, ()):
                 try:
@@ -108,7 +108,7 @@ class ObservationHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         session = self.server.session
-        if self.path != f'/v1/videos/{session.info["video_id"]}/observations':
+        if session is None or self.path != f'/v1/videos/{session.info["video_id"]}/observations':
             self.reply(404, {"error": "Video or route not found"})
             return
         if self.headers.get_content_type() != "application/json":

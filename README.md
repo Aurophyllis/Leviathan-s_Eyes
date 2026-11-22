@@ -79,18 +79,31 @@ python scripts/verify_desktop.py runs/desktop-vision-check --ollama-model qwen35
 
 ## 第四步 · 画面变化驱动选帧
 
-桌面界面可切换「均匀」「画面变化」「变化与覆盖」。CLI、HTTP 和 MCP 统一接受 `uniform`、`change_only`、`change_guarded`，默认均匀采样。
+桌面界面可切换「均匀」「画面变化」「变化与覆盖」「嵌套覆盖」。CLI、HTTP 和 MCP 默认使用 `uniform`。
 
 - `uniform` 按等间隔时间点选取附近帧。
 - `change_only` 在 64×36 缩略帧上计算 HSV 变化分，依次优先硬切、累积运动和静止兜底，同类触发按分数降序。首遍避免相邻帧过近，次遍补足预算。
 - `change_guarded` 先预留约四分之一预算作为均匀时间锚点，再使用同一变化优先级补齐。首版的锚点会随预算重算，较大预算下的选帧集合可能变化。
+- `change_nested` 每四个选帧位置预留一个时间锚点。锚点按区间中点、四分之一、四分之三的顺序逐级细分，其余位置按变化优先级补入。同一视频和观察区间中，较大的预算会保留较小预算选出的所有帧。
 
 变化驱动的观察目录额外保存 `sampling_trace.json`，含分数、触发原因及阈值。三种方法都使用同一原始帧时间轴。变化方法目前会扫描指定区间的缩略帧并单独解码入选原帧，长视频扫描开销需要另行实测。
 
 ```powershell
 python app.py sample.mp4 --k 4 --method change_guarded --output runs/guarded
+python app.py sample.mp4 --k 8 --method change_nested --output runs/nested
 python scripts/evaluate_sampling.py runs/fixed-budget-evaluation
 python scripts/verify_desktop.py runs/guarded-desktop-check --method change_guarded
 ```
 
 合成评测固定四个样片，在相同区间和帧数下比较证据命中。时间戳落入人工定义的证据区间即记一次命中。同一场景的重复帧不额外加分。
+
+## 第五步 · AKS 选帧逻辑离线复现
+
+从[资源索引](docs/phase-1/README.md)取得固定版本的 AKS 源码 ZIP。下面的可选验收需要 NumPy，以执行已核对哈希的作者脚本。本项目的离线选帧实现只使用标准库。
+
+```powershell
+python -m pip install numpy
+python scripts/reproduce_aks.py 'C:/path/to/AKS-source.zip' runs/aks-blip
+```
+
+使用作者缓存的 LongVideoBench BLIP 分数和帧序号，按 32、64 两个预算逐题对比完整选帧列表。脚本保存本地实现的输出、作者脚本复跑结果、输入哈希，以及与仓库随附帧列表分别比较的结果。此步骤验证给定分数后的选帧逻辑。视频解码、BLIP 推理与下游问答准确率需要独立验证。

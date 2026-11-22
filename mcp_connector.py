@@ -26,7 +26,8 @@ def create_connector(port):
 
     @mcp.tool()
     def observe_video(video_id: str, start_ms: int = 0, end_ms: int | None = None,
-                      k: int = 4, method: Literal["uniform", "change_only", "change_guarded"] = "uniform",
+                      k: int = 4,
+                      method: Literal["uniform", "change_only", "change_guarded", "change_nested"] = "uniform",
                       ) -> list[TextContent | ImageContent]:
         """Return a numbered contact sheet and exact frame timestamps for a video interval.
 

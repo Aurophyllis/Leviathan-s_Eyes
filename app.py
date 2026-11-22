@@ -8,7 +8,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 
-from sampling import METHODS, TRACE_CONFIG, classify, pick_changes, scan_changes
+from sampling import METHODS, TRACE_CONFIG, classify, pick_changes, pick_nested, scan_changes
 
 
 def run(*args, cwd=None):
@@ -76,9 +76,12 @@ def extract(video, output, start, end, count, *, frames=None, method="uniform"):
     else:
         available = [(time, index) for time, index in frames if start <= time < end]
         change_rows = classify(available, scan_changes(video, available)) if available else []
-        anchor_count = max(1, count // 4) if method == "change_guarded" else 0
-        anchors = uniform(available, start, end, anchor_count) if anchor_count else []
-        selected = pick_changes(change_rows, count, anchors)
+        if method == "change_nested":
+            selected = pick_nested(change_rows, count, start, end)
+        else:
+            anchor_count = max(1, count // 4) if method == "change_guarded" else 0
+            anchors = uniform(available, start, end, anchor_count) if anchor_count else []
+            selected = pick_changes(change_rows, count, anchors)
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=output.parent) as folder:
         stage = Path(folder) / "result"

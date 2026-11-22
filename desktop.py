@@ -55,7 +55,7 @@ class Desktop:
         self.start = self.field(toolbar, "起点 ms", "0")
         self.end = self.field(toolbar, "终点 ms", "")
         self.count = self.field(toolbar, "帧数", "4")
-        self.method_labels = dict(zip(("均匀", "画面变化", "变化与覆盖"), METHODS))
+        self.method_labels = dict(zip(("均匀", "画面变化", "变化与覆盖", "嵌套覆盖"), METHODS))
         self.method = tk.StringVar(value="均匀")
         ttk.Combobox(toolbar, textvariable=self.method, values=list(self.method_labels),
                      state="readonly", width=10).pack(side="left", padx=(0, 8))

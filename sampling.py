@@ -3,7 +3,7 @@
 import subprocess
 import tempfile
 
-METHODS = ("uniform", "change_only", "change_guarded")
+METHODS = ("uniform", "change_only", "change_guarded", "change_nested")
 GRID = (64, 36)
 CUT_MIN = 18
 CUT_RATIO = 1.5
@@ -16,6 +16,7 @@ TRACE_CONFIG = {
     "grid": GRID, "cut_min": CUT_MIN, "cut_ratio": CUT_RATIO,
     "motion_min": MOTION_MIN, "motion_budget": MOTION_BUDGET,
     "fallback_ms": FALLBACK_MS, "spacing_ms": MIN_SPACING_MS,
+    "nested_anchor_interval": 4,
 }
 
 
@@ -94,12 +95,16 @@ def classify(candidates, scores):
     return rows
 
 
-def pick_changes(rows, count, anchors=()):
+def rank_changes(rows):
     priorities = {"cut": 3, "motion": 2, "timeout": 1, "change_score": 0}
-    chosen = {index: (time, "time_anchor") for time, index in anchors}
-    ranked = sorted(rows, key=lambda row: (
+    return sorted(rows, key=lambda row: (
         -priorities[row["trigger"]], -row["change_score"], row["t_ms"],
     ))
+
+
+def pick_changes(rows, count, anchors=()):
+    chosen = {index: (time, "time_anchor") for time, index in anchors}
+    ranked = rank_changes(rows)
     for spacing in (MIN_SPACING_MS, 0):
         for row in ranked:
             if len(chosen) == count:
@@ -107,4 +112,35 @@ def pick_changes(rows, count, anchors=()):
             index, time = row["source_index"], row["t_ms"]
             if index not in chosen and all(abs(time - t) >= spacing for t, _ in chosen.values()):
                 chosen[index] = (time, row["trigger"])
+    return sorted((time, index, reason) for index, (time, reason) in chosen.items())
+
+
+def pick_nested(rows, count, start, end):
+    """Use a budget-independent selection order, then display its prefix in time order."""
+    ranked = rank_changes(rows)
+    chosen = {}
+    anchor_interval = TRACE_CONFIG["nested_anchor_interval"]
+    for slot in range(min(count, len(rows))):
+        if slot % anchor_interval == 0:
+            anchor = slot // anchor_interval
+            level = (anchor + 1).bit_length() - 1
+            offset = anchor + 1 - 2**level
+            target = start + (2 * offset + 1) * (end - start) / 2**(level + 1)
+            remaining = (row for row in rows if row["source_index"] not in chosen)
+            row = min(remaining, key=lambda item: (abs(item["t_ms"] - target), item["t_ms"]))
+            reason = "time_anchor"
+        else:
+            first = None
+            for candidate in ranked:
+                index, time = candidate["source_index"], candidate["t_ms"]
+                if index in chosen:
+                    continue
+                if first is None:
+                    first = candidate
+                if all(abs(time - t) >= MIN_SPACING_MS for t, _ in chosen.values()):
+                    first = candidate
+                    break
+            row = first
+            reason = row["trigger"]
+        chosen[row["source_index"]] = (row["t_ms"], reason)
     return sorted((time, index, reason) for index, (time, reason) in chosen.items())

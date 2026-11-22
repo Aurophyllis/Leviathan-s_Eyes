@@ -11,7 +11,7 @@ from time import perf_counter
 from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from sampling import METHODS
+from sampling import METHODS, pick_nested
 from serve import VideoSession
 
 
@@ -93,6 +93,17 @@ def evaluate(output):
                     "timestamps_ms": times, "seconds": round(elapsed, 4),
                     "observation": f'{case}/observations/{result["observation_id"]}',
                 })
+        nested = [row for row in trials if row["case"] == case and row["method"] == "change_nested"]
+        if not set(nested[0]["timestamps_ms"]) <= set(nested[1]["timestamps_ms"]):
+            raise RuntimeError(f"Nested sampling lost a frame when the budget increased: {case}")
+        trace = json.loads((output / nested[0]["observation"] / "sampling_trace.json").read_text())
+        previous = set()
+        for budget in range(1, 17):
+            selection = pick_nested(trace["candidates"], budget, 0, SECONDS * 1000)
+            current = {index for _, index, _ in selection}
+            if len(current) != budget or not previous <= current:
+                raise RuntimeError(f"Nested sampler violated budget or prefix at {case}, k={budget}")
+            previous = current
     write_json(output / "trials.json", trials)
     with (output / "trials.csv").open("w", newline="", encoding="utf-8-sig") as file:
         writer = csv.DictWriter(file, fieldnames=list(trials[0]))

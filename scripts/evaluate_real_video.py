@@ -33,7 +33,11 @@ def candidates(video, directory, count):
     # The first common budget is a deterministic candidate pool spanning the full clip.
     timeline = uniform(raw_times, 0, end, min(count, len(raw_times)))
     directory.mkdir()
-    select = "+".join(f"eq(n,{index})" for _, index in timeline)
+    terms = [f"eq(n,{index})" for _, index in timeline]
+    # FFmpeg limits expression depth. Group comparisons so a full 128-frame pool
+    # decodes in one pass with the same exact frame indices.
+    select = "+".join("(" + "+".join(terms[offset:offset + 16]) + ")"
+                      for offset in range(0, len(terms), 16))
     run("ffmpeg", "-nostdin", "-v", "error", "-i", str(video), "-map", "0:V:0",
         "-vf", f"select='{select}',scale='min(512,iw)':-2:flags=area",
         "-frames:v", str(len(timeline)), "-fps_mode", "passthrough", "-start_number", "1", "frame-%03d.png",
@@ -153,16 +157,21 @@ def benchmark(manifests, output, clip_folder, focus_archive, count, k, seed, mod
                     shutil.copyfile(paths[index], folder / name)
                     frames.append({"frame_id": number, "t_ms": timeline[index][0], "image": name})
                 save(folder / "frames.json", frames)
+                start = perf_counter()
                 make_sheet(folder, frames)
+                sheet_time = perf_counter() - start
                 hits = measure_hits([frame["t_ms"] for frame in frames], scenes)
                 row = {"id": sample["id"], "duration_group": sample["duration_group"], "method": method,
                        "k": k, "candidate_count": len(paths), "scoring_calls": calls,
                        "scene_hits": sum(hits.values()), "scene_count": len(hits),
                        "candidate_scene_hits": sum(ceiling.values()), "all_scenes": all(hits.values()),
                        "shared_preparation_seconds": round(preparation, 3),
-                       "selector_seconds": round(elapsed, 3), "choice": None, "correct": None}
+                       "selector_seconds": round(elapsed, 3), "sheet_seconds": round(sheet_time, 3),
+                       "model_seconds": None, "choice": None, "correct": None}
                 if model:
+                    start = perf_counter()
                     reply = model_answer(model, question, sample["options"], folder / "sheet.png")
+                    row["model_seconds"] = round(perf_counter() - start, 3)
                     save(folder / "model.json", reply)
                     row.update(choice=reply["choice"], correct=reply["choice"] == sample["answer"])
                 save(folder / "result.json", {**row, "scene_hits_by_id": hits, "candidate_ceiling_by_id": ceiling})

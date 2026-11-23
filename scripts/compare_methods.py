@@ -5,6 +5,7 @@ import base64
 import csv
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -80,7 +81,8 @@ def model_answer(model, question, options, sheet):
             "options": {"temperature": 0, "num_ctx": 4096, "num_predict": 24},
             "messages": [{"role": "user", "content": prompt,
                           "images": [base64.b64encode(sheet.read_bytes()).decode("ascii")]}]}
-    request = Request("http://127.0.0.1:11434/api/chat", data=json.dumps(body).encode(),
+    port = int(os.environ.get("LEVIATHAN_EXPERIMENT_OLLAMA_PORT", "11434"))
+    request = Request(f"http://127.0.0.1:{port}/api/chat", data=json.dumps(body).encode(),
                       headers={"Content-Type": "application/json"})
     with build_opener(ProxyHandler({})).open(request, timeout=180) as response:
         result = json.load(response)

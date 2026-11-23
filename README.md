@@ -4,6 +4,7 @@
 
 - [单人实施计划](docs/phase-1/Luo-第一阶段任务书.md)
 - [参考资源与版本核对](docs/phase-1/README.md)
+- [Windows 实时观察、问答和生态接口](docs/live-vision.md)
 
 ## 第一步 · 均匀取帧
 

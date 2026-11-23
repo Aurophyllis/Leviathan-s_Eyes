@@ -17,7 +17,7 @@ from video_client import VideoClient
 
 
 class Desktop:
-    def __init__(self, root, output, port):
+    def __init__(self, root, output, port, *, ollama_model=None, ollama_port=11434):
         self.root = root
         self.output = output
         self.server = HTTPServer(("127.0.0.1", port), ObservationHandler)
@@ -27,6 +27,9 @@ class Desktop:
         self.observation = None
         self.image = None
         self.bitmap = None
+        self.vision_panel = None
+        self.ollama_model = ollama_model
+        self.ollama_port = ollama_port
         Thread(target=self.server.serve_forever, daemon=True).start()
         root.title("Leviathan's Eyes")
         root.geometry("1080x650")
@@ -47,6 +50,7 @@ class Desktop:
         ttk.Label(header, text="Leviathan's Eyes", style="Title.TLabel").pack(side="left")
         self.open_button = ttk.Button(header, text="打开视频", command=self.pick_video)
         self.open_button.pack(side="right")
+        ttk.Button(header, text="实时观察与问答", command=self.open_vision).pack(side="right", padx=(0, 8))
         self.video_label = ttk.Label(main, text="尚未打开视频")
         self.video_label.pack(anchor="w", pady=(6, 12))
 
@@ -97,6 +101,14 @@ class Desktop:
             ("视频", "*.mp4 *.mkv *.mov *.webm *.avi"), ("所有文件", "*.*")])
         if path:
             self.load_video(Path(path))
+
+    def open_vision(self):
+        if self.vision_panel is None:
+            from vision_panel import VisionPanel
+
+            self.vision_panel = VisionPanel(self, self.ollama_model, self.ollama_port)
+        self.vision_panel.window.deiconify()
+        self.vision_panel.window.lift()
 
     def submit(self, work, done):
         self.open_button.configure(state="disabled")
@@ -196,6 +208,8 @@ class Desktop:
         self.canvas.create_image(width // 2, height // 2, image=self.bitmap)
 
     def close(self):
+        if self.vision_panel is not None:
+            self.vision_panel.close()
         self.worker.shutdown(wait=False, cancel_futures=True)
         self.server.shutdown()
         self.server.server_close()
@@ -206,10 +220,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--ollama-model", help="Enable visual questions using a model from local Ollama")
+    parser.add_argument("--ollama-port", type=int, default=11434)
     args = parser.parse_args()
     root = tk.Tk()
     try:
-        Desktop(root, args.output.resolve(), args.port)
+        Desktop(root, args.output.resolve(), args.port, ollama_model=args.ollama_model, ollama_port=args.ollama_port)
     except OSError as error:
         root.destroy()
         parser.exit(1, f"无法启动本机服务: {error}\n")

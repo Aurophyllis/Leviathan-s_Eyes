@@ -70,8 +70,11 @@ class VisionPanel:
         binding = ttk.Frame(body)
         binding.pack(fill="x", pady=(0, 8))
         ttk.Label(binding, text="DSH 会话 ID").pack(side="left")
-        self.session_id = ttk.Entry(binding)
+        self.session_id = ttk.Combobox(binding, values=(), width=52)
         self.session_id.pack(side="left", fill="x", expand=True, padx=5)
+        refresh_sessions = ttk.Button(binding, text="刷新会话", command=self.refresh_dsh_sessions)
+        refresh_sessions.pack(side="left", padx=3)
+        self.buttons.append(refresh_sessions)
         for label, action in (("绑定 / 重连", self.bind_session), ("断开", self.unbind_session)):
             button = ttk.Button(binding, text=label, command=action)
             button.pack(side="left", padx=3)
@@ -140,6 +143,21 @@ class VisionPanel:
     @property
     def scoped_client(self):
         return self.active_client or self.client
+
+    def refresh_dsh_sessions(self):
+        try:
+            host = self.dsh if isinstance(self.dsh, DshPlugin) else DshPlugin()
+            host.connect()
+            items = host.sessions()
+        except (OSError, ValueError) as error:
+            self.chat_status.set(str(error))
+            return
+        values = [item.get("sessionId") for item in items if item.get("sessionId")]
+        self.session_id["values"] = values
+        current = self.session_id.get().strip()
+        if values and current not in values:
+            self.session_id.set(values[0])
+        self.chat_status.set(f"找到 {len(values)} 个 live DSH 会话；选择后点绑定。")
 
     def bind_session(self):
         if self.watch_id or self.sending or self.pending:

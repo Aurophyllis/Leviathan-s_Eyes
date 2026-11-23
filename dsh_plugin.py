@@ -81,6 +81,10 @@ class DshPlugin:
             raise DshError("DSH 会话未打开或已结束", code=404)
         return body
 
+    def sessions(self):
+        body = self._request("GET", "/v1/sessions")
+        return list(body.get("sessions") or [])
+
     def prepare(self, session_id):
         return Delivery(session_id, str(uuid4()))
 
